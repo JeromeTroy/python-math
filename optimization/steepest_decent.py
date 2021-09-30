@@ -25,6 +25,6 @@ class SteepestDecentOptimizer(QuasiNewtonOptimizer):
     def minimize(self, objective, x0, gradient=None):
         n = len(x0)
         identity = np.eye(n)
-        super().minimize(objective, x0, graident=None, hessian=identity)
-
-
+        return super().minimize(
+            objective, x0, gradient=gradient, hessian=identity
+        )

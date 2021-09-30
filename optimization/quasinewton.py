@@ -3,11 +3,17 @@ Quasi newton optimization framework
 """
 
 import numpy as np
+from scipy.linalg import cho_factor, cho_solve, solve
+
+import sys
+sys.path.insert(1, "../utils/")
+
+import fdjac
 
 class QuasiNewtonOptimizer():
 
     def __init__(self, **kwargs):
-        
+
         keys = kwargs.keys()
 
         if "grad_tol" in keys:
@@ -39,26 +45,48 @@ class QuasiNewtonOptimizer():
         else:
             self.line_search = None
 
+        if "fd_grad_step" in keys:
+            self.fd_grad_step = kwargs["fd_grad_step"]
+        else:
+            self.fd_grad_step = 1e-6
+
+        if "fd_hess_step" in keys:
+            self.fd_hess_step = kwargs["fd_hess_step"]
+        else:
+            self.fd_hess_step = 1e-6
+
+        if "default_step_size" in keys:
+            self.default_step_size = kwargs["default_step_size"]
+        else:
+            self.default_step_size = 1
+
         # will be callable functions
         self.objective = None
         self.gradient = None
         self.hessian = None
+
+        # current values
+        self.current_objective = 0
+        self.current_gradient = 0
+        self.current_hessian = 0
 
         # other book keeping
         self.minimizer_list = None
         self.success = False
 
     def do_hessian_update(self):
-        pass
+        self.current_hessian = self.hessian(self.get_minimizer())
 
     def do_gradient_update(self):
-        pass
+        self.current_gradient = self.gradient(self.get_minimizer())
 
     def solve(self, hessian, gradient):
         return -gradient
 
-    def check_success(self, gradient):
-        self.success = np.linalg.norm(gradient) < self.gradient_tolerance
+    def check_success(self):
+        self.success = (
+            np.linalg.norm(self.current_gradient) < self.gradient_tolerance
+        )
 
 
     def update_minimizer(self):
@@ -74,13 +102,14 @@ class QuasiNewtonOptimizer():
             self.do_gradient_update()
 
         # apply linear solver on hessian and gradient
-        decent_direction = self.solve(self.hessian, self.gradient)
+        decent_direction = self.solve(self.current_hessian,
+                                        self.current_gradient)
 
         # determine step size
         if self.line_search is not None:
             step_size = self.line_search()
         else:
-            step_size = 1
+            step_size = self.default_step_size
 
         # perform update
         new_point = self.get_minimizer() + step_size * decent_direction
@@ -96,10 +125,28 @@ class QuasiNewtonOptimizer():
     def set_initial_guess(self, x0):
         self.minimizer_list = [x0]
 
+    def set_gradient(self, gradient):
+        if gradient is not None:
+            self.gradient = gradient
+
+        else:
+            self.gradient = lambda x: fdjac.fdgrad(
+                self.objective, x, step=self.fd_grad_step
+            )
+
+    def set_hessian(self, hessian):
+        if hessian is not None:
+            self.hessian = hessian
+        else:
+            self.hessian = lambda x: fdjac.fdhess(
+                self.objective, x, step=self.fd_hess_step
+            )
+
     def minimize(self, objective, x0, gradient=None, hessian=None):
         self.objective = objective
-        self.gradient = gradient
-        self.hessian = hessian
+        self.set_gradient(gradient)
+        self.set_hessian(hessian)
+
         self.set_initial_guess(x0)
 
         iter_count = 0
@@ -111,14 +158,37 @@ class QuasiNewtonOptimizer():
         if iter_count == self.maximum_iterations:
             print("Warning maximum iterations reached!")
             if not self.success:
-                raise ValueError("Iteration did not converge!")
+                print("Minimization list: ")
+                print(self.minimizer_list)
+                print("Iteration did not converge!")
 
         return self.get_minimizer()
 
-            
+class NewtonOptimizer(QuasiNewtonOptimizer):
 
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
-        
+        # always update hessian
+        self.update_hessian = True
+        self.update_hessian_reason = None
 
+        # always update gradient
+        self.update_gradient = True
+        self.update_gradient_reason = None
 
+    def solve(self, hessian, gradient):
+        """
+        Solve as a linear system
+        """
+        # expect hessian to be SPD
 
+        try:
+            (c, lower) = cho_factor(hessian)
+            decent_direction = -cho_solve((c, lower), gradient)
+        except np.linalg.LinAlgError:
+            # choleksy factorization failed, not SPD
+            # has to be symmetric
+            decent_direction = -solve(hessian, gradient, assume_a="sym")
+
+        return decent_direction

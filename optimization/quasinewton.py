@@ -1,5 +1,8 @@
 """
 Quasi newton optimization framework
+
+QuasiNewtonOptimizer is the base class for all Quasi-Newton
+methods
 """
 
 import numpy as np
@@ -8,12 +11,14 @@ from scipy.linalg import cho_factor, cho_solve, solve
 import sys
 sys.path.insert(1, "../utils/")
 
+from abstract_newton_opt import AbstractNewtonLikeOptimizer
 import fdjac
 import line_search as ls
 
-class QuasiNewtonOptimizer():
+class QuasiNewtonOptimizer(AbstractNewtonLikeOptimizer):
 
     def __init__(self, **kwargs):
+        super().__init__(**kwargs)
 
         # unpack many parameters, all the dials...
         keys = kwargs.keys()
@@ -37,16 +42,6 @@ class QuasiNewtonOptimizer():
             self.update_gradient = True
             self.update_gradient_reason = None
 
-        if "max_iters" in keys:
-            self.maximum_iterations = kwargs["max_iters"]
-        else:
-            self.maximum_iterations = 100
-
-        if "line_search" in keys:
-            self.line_search = kwargs["line_search"]
-        else:
-            self.line_search = None
-
         if "fd_grad_step" in keys:
             self.fd_grad_step = kwargs["fd_grad_step"]
         else:
@@ -57,42 +52,15 @@ class QuasiNewtonOptimizer():
         else:
             self.fd_hess_step = 1e-6
 
-        if "default_step_size" in keys:
-            self.default_step_size = kwargs["default_step_size"]
-        else:
-            self.default_step_size = 1
-
-        if "armijo" in keys:
-            self.armijo = kwargs["armijo"]
-        else:
-            self.armijo = 0.5
-        if "wolfe" in keys:
-            self.wolfe = kwargs["wolfe"]
-        else:
-            self.wolfe = 0.3
-
-        if "line_search_max_iter" in keys:
-            self.max_iter_ls = kwargs["line_search_max_iter"]
-        else:
-            self.max_iter_ls = 15
-
         # will be callable functions
-        self.objective = None
         self.gradient = None
         self.hessian = None
 
         # current values
-        self.current_objective = None
         self.current_gradient = 0
         self.current_hessian = 0
 
-        self.current_step_size = self.default_step_size
         self.current_position_update = 0
-        self.current_descent_direction = None
-
-        # other book keeping
-        self.minimizer_list = None
-        self.success = False
 
     def do_hessian_update(self):
         self.current_hessian = self.hessian(self.get_minimizer())
@@ -116,7 +84,6 @@ class QuasiNewtonOptimizer():
         self.success = (
             np.linalg.norm(self.current_gradient) < self.gradient_tolerance
         )
-
 
     def update_minimizer(self):
         """
@@ -163,17 +130,6 @@ class QuasiNewtonOptimizer():
 
         self.push_minimizer(new_point)
         self.current_objective = self.objective(self.get_minimizer())
-
-
-    def get_minimizer(self):
-        return self.minimizer_list[-1]
-
-    def push_minimizer(self, point):
-        self.minimizer_list.append(point)
-
-    def set_initial_guess(self, x0):
-        self.minimizer_list = [x0]
-        self.current_objective = self.objective(x0)
 
     def set_gradient(self, gradient):
         if gradient is not None:

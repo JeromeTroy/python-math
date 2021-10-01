@@ -238,7 +238,7 @@ def bracketing(grad, loc, des_dir, default_step_size, max_iter, wolfe,
     return bracket
 
 
-@jit
+#@jit
 def __find_cubic_interpolant_root__(bracket, f_hi, g_hi, f_lo, g_lo):
     """
     Helper function for finding a cubic interpolant to find its minimum
@@ -267,9 +267,15 @@ def __find_cubic_interpolant_root__(bracket, f_hi, g_hi, f_lo, g_lo):
     discriminant = b**2 - 3 * a * c
     opt_value = bracket[0]
     if discriminant > 0:
-        # have 2 real roots
-        root_plus = (-b + np.sqrt(discriminant)) / (3 * a) + bracket[0]
-        root_minus = (-b - np.sqrt(discriminant)) / (3 * a) + bracket[0]
+        # have at most 2 real roots
+        if np.abs(a) > 1e-16:
+            # cubic interpolant
+            root_plus = (-b + np.sqrt(discriminant)) / (3 * a) + bracket[0]
+            root_minus = (-b - np.sqrt(discriminant)) / (3 * a) + bracket[0]
+        else:
+            # is really quadratic
+            root_plus = -c / (2 * b) + bracket[0]
+            root_minus = root_plus
 
         if bracket[0] < root_plus and root_plus < bracket[1]:
             # + root is valid

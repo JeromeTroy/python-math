@@ -21,8 +21,9 @@ def g(x):
     return 2 * x
 
 opt_args = {
-    "line_search" : "back",
-    "armijo" : 0.2,
+    "line_search" : "wolfe",
+    "armijo" : 0.9,
+    "wolfe" : 0.3
 }
 
 opt = BFGS(**opt_args)

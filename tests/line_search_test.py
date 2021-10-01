@@ -21,7 +21,7 @@ loc = np.array([2, 2])
 armijo = 0.01
 wolfe = 0.5
 
-max_iter = 5
+max_iter = 10
 
 step_size_backtrack = ls.execute_line_search(
     f, g, loc, des_dir, default_step_size, armijo, wolfe,

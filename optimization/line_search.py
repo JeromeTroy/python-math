@@ -46,7 +46,7 @@ def execute_line_search(fun, grad, loc, des_dir, default_step_size,
 
     else:
         # wolfe search
-        raise NotImplementedError("Wolfe condition still a work in progress")
+        # raise NotImplementedError("Wolfe condition still a work in progress")
         step = wolfe_search(fun, grad, loc, des_dir,
                             default_step_size, max_iter, wolfe, armijo)
 
@@ -143,7 +143,8 @@ def backtracking(fun, grad, loc, des_dir, default_step_size, armijo,
 
     return new_step_size
 
-def bracketing(grad, loc, des_dir, default_step_size, max_iter, wolfe):
+def bracketing(grad, loc, des_dir, default_step_size, max_iter, wolfe,
+            debug=False):
     """
     Bracketing to determine interval of valid solution
 
@@ -167,8 +168,9 @@ def bracketing(grad, loc, des_dir, default_step_size, max_iter, wolfe):
 
     # setup bracket
     bracket = [default_step_size, 2 * default_step_size]
-    print("init bracket: ", bracket)
     bracket_success = False
+    lower_success = False
+    upper_success = False
     key_val = wolfe * np.abs(np.dot(des_dir, grad(loc)))
 
     # gradients at each end
@@ -178,46 +180,58 @@ def bracketing(grad, loc, des_dir, default_step_size, max_iter, wolfe):
     iter_num = 0
 
     while not bracket_success and iter_num < max_iter:
-
+        iter_num += 1
         # what can be wrong
 
-        if key_val >= -lower_grad:
-            # lower gradient too shallow
-            print("lower gradient too shallow")
-            if key_val < -upper_grad:
-                # upper gradient can replace
+        if lower_grad > 0:
+            if debug: print("lower is too far out")
+            bracket[0] = 0
+            lower_grad = np.dot(des_dir, grad(loc))
+            continue
+
+        elif np.abs(lower_grad) >= key_val:
+            if debug: print("lower is not far out enough")
+
+            if upper_grad < 0 and np.abs(upper_grad) < key_val:
+                if debug: print("can replace with upper")
                 bracket[0] = bracket[1]
-
-                # update values
-                lower_grad = upper_grad
                 bracket[1] *= 2
-
-                print("replaced lower bracket value")
-                print("new bracket: ", bracket)
-
-                continue
+                lower_grad = upper_grad
+                upper_grad = np.dot(des_dir, grad(loc + bracket[1] * des_dir))
 
             else:
-                # upper gradient cannot replace
-                # default to no step size
-                print("must shrink to no step size")
-                bracket[0] = 0
-                lower_grad = np.dot(des_dir, grad(loc))
-                print("new bracket: ", bracket)
-                continue
+                if debug: print("extending lower, but not to outer")
+                bracket[0] = (7 * bracket[0] + 3 * bracket[1]) / 10
+                lower_grad = np.dot(des_dir, grad(loc + bracket[0] * des_dir))
 
-        if key_val >= upper_grad:
-            # upper gradient is too shallow
-            print("upper gradient too shallow")
-            # go further
+            continue
+
+        else:
+            if debug:
+                print("lower grad is negative, and is within appropriate bounds")
+            lower_success = True
+
+        if upper_grad < 0:
+            if debug: print("upper is not out far enough")
             bracket[1] *= 2
-            upper_grad = np.dot(des_dir, grad(bracket[1]))
-            print("new bracket: ", bracket)
+            upper_grad = np.dot(des_dir, grad(loc + bracket[1] * des_dir))
+            continue
 
-        bracket_success = ((key_val < -lower_grad) and
-                (key_val < upper_grad))
-        iter_num += 1
+        elif np.abs(upper_grad) >= key_val:
+            if debug: print("upper is too far out")
+            bracket[1] = (3 * bracket[0] + 7 * bracket[1]) / 10
+            upper_grad = np.dot(des_dir, grad(loc + bracket[1] * des_dir))
+            continue
 
+        else:
+            if debug:
+                print("upper grad is positive and is within appropriate bounds")
+            upper_success = True
+
+        bracket_success = lower_success and upper_success
+        if debug: print("have success? ", bracket_success)
+
+    bracket_success = lower_success and upper_success
     if not bracket_success:
         print("Warning wolfe condition cannot be satisfied")
 
@@ -246,8 +260,8 @@ def __find_cubic_interpolant_root__(bracket, f_hi, g_hi, f_lo, g_lo):
     width = bracket[1] - bracket[0]
 
     # more complex coefficients
-    b = -(g_up * width - 3 * f_up + 2 * c * width + 3 * d) / (width**2)
-    a = (f_up - b * width ** 2 - c * width - d) / (width ** 3)
+    b = -(g_hi * width - 3 * f_hi + 2 * c * width + 3 * d) / (width**2)
+    a = (f_hi - b * width ** 2 - c * width - d) / (width ** 3)
 
     # check for real root via discriminant (in parabola from derivative)
     discriminant = b**2 - 3 * a * c
@@ -264,8 +278,8 @@ def __find_cubic_interpolant_root__(bracket, f_hi, g_hi, f_lo, g_lo):
             # + root invalid, - root valid
             opt_value = root_minus
 
-    # if the above does not exit function, we end up here...
-    print("Warning, cubic does not have valid root!")
+    else:
+        print("Warning, cubic does not have valid root!")
     return opt_value
 
 def wolfe_search(f, g, loc, des_dir,
@@ -295,20 +309,18 @@ def wolfe_search(f, g, loc, des_dir,
     """
 
     # stage one - compute bracket
-    print("bracketing...")
     bracket = bracketing(g, loc, des_dir, default_step_size, max_iter, wolfe)
 
-    print("bracket: ", bracket)
     # check for success for wolfe condition
     step_size = bracket[0]
     # store function and gradient values
     f_lo = f(loc + step_size * des_dir)
-    g_lo = g(loc + step_size * des_dir)
+    g_lo = np.dot(des_dir, g(loc + step_size * des_dir))
     f_curr = f(loc)
     g_curr = g(loc)
     pdg_curr = np.dot(des_dir, g_curr)
     # check both wolfe condition and armijo condition
-    wolfe_success = check_wolfe(pdg_curr, np.dot(des_dir, g_lo),
+    wolfe_success = check_wolfe(pdg_curr, g_lo,
                                 wolfe)
     wolfe_success = wolfe_success and \
             check_armijo(f_curr, f_lo, pdg_curr, armijo)
@@ -317,8 +329,8 @@ def wolfe_search(f, g, loc, des_dir,
         # check other side
         step_size = bracket[1]
         f_hi = f(loc + step_size * des_dir)
-        g_hi = g(loc + step_size * des_dir)
-        wolfe_success = check_wolfe(pdg_curr, np.dot(des_dir, g_hi), wolfe)
+        g_hi = np.dot(des_dir, g(loc + step_size * des_dir))
+        wolfe_success = check_wolfe(pdg_curr, g_hi, wolfe)
         wolfe_success = wolfe_success and \
                 check_armijo(f_curr, f_hi, pdg_curr, armijo)
 
@@ -328,6 +340,7 @@ def wolfe_search(f, g, loc, des_dir,
     # if we are here, f_hi,lo, g_hi,lo are all assigned
     while not wolfe_success and iter_num < max_iter:
 
+        iter_num += 1
         # refine interval via cubic interpolant
         # cast to tuple for jit __find_cubic_interpolant_root__
         bracket_tup = tuple(bracket)
@@ -335,24 +348,26 @@ def wolfe_search(f, g, loc, des_dir,
                                                         f_lo, g_lo)
 
         # pick which side to truncate
-        new_grad_val = g(loc + intermediate * des_dir)
+        new_grad_val = g(loc + step_size * des_dir)
         pdg_new = np.dot(des_dir, new_grad_val)
-        f_new = f(loc + intermediate * des_dir)
+        f_new = f(loc + step_size * des_dir)
         if pdg_new < wolfe * np.abs(pdg_curr):
             # this is a better lower bound on interval
             bracket[0] = step_size
-            g_lo = new_grad_val
+            g_lo = pdg_new
             f_lo = f_new
         else:
             # better as upper bound
             bracket[1] = step_size
-            g_hi = new_grad_val
+            g_hi = pdg_new
             f_hi = f_new
 
         # check for success conditions
-        wolfe_success = check_wolfe(pdg_curr, pdg_new, wolfe)
+        wolfe_success = check_wolfe(pdg_new, pdg_curr, wolfe)
+        #print("wolfe success: ", wolfe_success)
+        #print("armijo success: ", check_armijo(f_new, f_curr, pdg_curr, armijo))
         wolfe_success = wolfe_success and \
-                    check_armijo(f_curr, f_new, pdg_curr, armijo)
+                    check_armijo(f_new, f_curr, pdg_curr, armijo)
 
     # end of while loop, have we succeeded
     if not wolfe_success:

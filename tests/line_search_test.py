@@ -15,13 +15,13 @@ def f(x):
 def g(x):
     return 2 * x
 
-default_step_size = 10
+default_step_size = 2.59
 des_dir = np.array([-1, -1])
 loc = np.array([2, 2])
-armijo = 0.5
-wolfe = 0.3
+armijo = 0.01
+wolfe = 0.5
 
-max_iter = 10
+max_iter = 5
 
 step_size_backtrack = ls.execute_line_search(
     f, g, loc, des_dir, default_step_size, armijo, wolfe,
@@ -35,11 +35,11 @@ wrap = lambda s: f(loc + s * des_dir)
 s_values = np.linspace(0, default_step_size, 100)
 y_values = np.array(list(map(wrap, list(s_values))))
 
-# plt.plot(s_values, y_values)
-# plt.plot(step_size_backtrack, wrap(step_size_backtrack), "*")
-# plt.xlabel("step size")
-# plt.ylabel("wrapped f")
-# plt.show()
+plt.plot(s_values, y_values)
+plt.plot(step_size_backtrack, wrap(step_size_backtrack), "*")
+plt.xlabel("step size")
+plt.ylabel("wrapped f")
+plt.show()
 
 step_size_wolfe = ls.execute_line_search(
     f, g, loc, des_dir, default_step_size, armijo, wolfe,

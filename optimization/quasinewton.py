@@ -82,7 +82,7 @@ class QuasiNewtonOptimizer():
         self.hessian = None
 
         # current values
-        self.current_objective = 0
+        self.current_objective = None
         self.current_gradient = 0
         self.current_hessian = 0
 
@@ -144,7 +144,25 @@ class QuasiNewtonOptimizer():
         self.current_position_update = self.current_step_size * \
                         self.current_descent_direction
         new_point = self.get_minimizer() + self.current_position_update
+
+        print("new", self.objective(new_point))
+        print("prev", self.current_objective)
+        if self.objective(new_point) >= self.current_objective:
+            # we did not descend
+            self.current_descent_direction *= -1
+            # determine step size
+            if self.line_search is not None:
+                self.current_step_size = self.do_line_search()
+            else:
+                self.current_step_size = self.default_step_size
+
+            # perform update
+            self.current_position_update = self.current_step_size * \
+                            self.current_descent_direction
+            new_point = self.get_minimizer() + self.current_position_update
+
         self.push_minimizer(new_point)
+        self.current_objective = self.objective(self.get_minimizer())
 
 
     def get_minimizer(self):
@@ -155,6 +173,7 @@ class QuasiNewtonOptimizer():
 
     def set_initial_guess(self, x0):
         self.minimizer_list = [x0]
+        self.current_objective = self.objective(x0)
 
     def set_gradient(self, gradient):
         if gradient is not None:

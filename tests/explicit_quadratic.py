@@ -11,6 +11,7 @@ sys.path.insert(1, "../optimization/")
 
 from steepest_decent import SteepestDecentOptimizer
 from quasinewton import NewtonOptimizer
+from bfgs import BFGS
 
 
 # case 1: quadratic 2d function
@@ -67,3 +68,33 @@ print(x_opt)
 
 print("path:")
 print(opt.minimizer_list)
+
+
+
+def f(x):
+    return x ** 4 - 4 * x **2 + x
+
+def g(x):
+    return 4 * x ** 3 - 8 * x + 1
+
+def h(x):
+    return 12 * x ** 2 - 8
+
+x0 = np.array([0.1])
+
+opt_args = {
+    "line_search" : "back",
+    "armijo" : 0.9,
+    "wolfe" : 0.5,
+    "default_step_size": 1
+}
+
+opt = BFGS(**opt_args)
+x_opt = opt.minimize(f, x0, gradient=g)
+
+x_plot = np.linspace(-3, 3, 100)
+plt.plot(x_plot, f(x_plot))
+plt.plot(x_opt, f(x_opt), "*")
+plt.xlabel("x")
+plt.ylabel("y")
+plt.show()

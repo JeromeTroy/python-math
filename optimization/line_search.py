@@ -42,11 +42,12 @@ def execute_line_search(fun, grad, loc, des_dir, default_step_size,
         # backtracking
         grad_val = grad(loc)
         step = backtracking(fun, grad_val, loc, des_dir,
-            default_step_size, armijo, max_iter=max_iter)
+            default_step_size, armijo, max_iters=max_iter)
 
     else:
         # wolfe search
-        step = wolfe_search(fun, gradd, loc, des_dir,
+        raise NotImplementedError("Wolfe condition still a work in progress")
+        step = wolfe_search(fun, grad, loc, des_dir,
                             default_step_size, max_iter, wolfe, armijo)
 
     return step
@@ -121,7 +122,7 @@ def backtracking(fun, grad, loc, des_dir, default_step_size, armijo,
     new_step_size = 2 * default_step_size
     ls_iters = 0
 
-    fun_old = f(loc)
+    fun_old = fun(loc)
 
     # pre do the dot product
     pdg = np.dot(grad, des_dir)
@@ -132,7 +133,7 @@ def backtracking(fun, grad, loc, des_dir, default_step_size, armijo,
         new_step_size /= 2
 
         # check armijo
-        fun_new = f(loc + new_step_size * des_dir)
+        fun_new = fun(loc + new_step_size * des_dir)
         is_suff_descent = check_armijo(fun_new, fun_old, pdg, armijo)
 
         ls_iters += 1
@@ -166,41 +167,52 @@ def bracketing(grad, loc, des_dir, default_step_size, max_iter, wolfe):
 
     # setup bracket
     bracket = [default_step_size, 2 * default_step_size]
+    print("init bracket: ", bracket)
     bracket_success = False
     key_val = wolfe * np.abs(np.dot(des_dir, grad(loc)))
 
     # gradients at each end
-    lower_grad = np.dot(des_dir, grad(bracket[0]))
-    upper_grad = np.dot(des_dir, grad(bracket[1]))
+    lower_grad = np.dot(des_dir, grad(loc + bracket[0] * des_dir))
+    upper_grad = np.dot(des_dir, grad(loc + bracket[1] * des_dir))
 
     iter_num = 0
 
     while not bracket_success and iter_num < max_iter:
 
         # what can be wrong
+
         if key_val >= -lower_grad:
-            # lower gradient too steep
+            # lower gradient too shallow
+            print("lower gradient too shallow")
             if key_val < -upper_grad:
                 # upper gradient can replace
                 bracket[0] = bracket[1]
 
                 # update values
                 lower_grad = upper_grad
-                brackett[1] *= 2
+                bracket[1] *= 2
+
+                print("replaced lower bracket value")
+                print("new bracket: ", bracket)
 
                 continue
 
             else:
                 # upper gradient cannot replace
                 # default to no step size
+                print("must shrink to no step size")
                 bracket[0] = 0
                 lower_grad = np.dot(des_dir, grad(loc))
+                print("new bracket: ", bracket)
+                continue
 
         if key_val >= upper_grad:
             # upper gradient is too shallow
+            print("upper gradient too shallow")
             # go further
             bracket[1] *= 2
             upper_grad = np.dot(des_dir, grad(bracket[1]))
+            print("new bracket: ", bracket)
 
         bracket_success = ((key_val < -lower_grad) and
                 (key_val < upper_grad))
@@ -283,8 +295,10 @@ def wolfe_search(f, g, loc, des_dir,
     """
 
     # stage one - compute bracket
+    print("bracketing...")
     bracket = bracketing(g, loc, des_dir, default_step_size, max_iter, wolfe)
 
+    print("bracket: ", bracket)
     # check for success for wolfe condition
     step_size = bracket[0]
     # store function and gradient values
@@ -317,7 +331,7 @@ def wolfe_search(f, g, loc, des_dir,
         # refine interval via cubic interpolant
         # cast to tuple for jit __find_cubic_interpolant_root__
         bracket_tup = tuple(bracket)
-        intermediate = __find_cubic_interpolant_root__(bracket_tup, f_hi, g_hi,
+        step_size = __find_cubic_interpolant_root__(bracket_tup, f_hi, g_hi,
                                                         f_lo, g_lo)
 
         # pick which side to truncate
@@ -326,12 +340,12 @@ def wolfe_search(f, g, loc, des_dir,
         f_new = f(loc + intermediate * des_dir)
         if pdg_new < wolfe * np.abs(pdg_curr):
             # this is a better lower bound on interval
-            bracket[0] = intermediate
+            bracket[0] = step_size
             g_lo = new_grad_val
             f_lo = f_new
         else:
             # better as upper bound
-            bracket[1] = intermediate
+            bracket[1] = step_size
             g_hi = new_grad_val
             f_hi = f_new
 
@@ -347,4 +361,4 @@ def wolfe_search(f, g, loc, des_dir,
 
     # spit out the appropriate step size
     # if wolfe_success, this is the intermediate value determined above
-    return intermediate
+    return step_size

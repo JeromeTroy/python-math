@@ -9,11 +9,13 @@ import sys
 sys.path.insert(1, "../utils/")
 
 import fdjac
+import line_search as ls
 
 class QuasiNewtonOptimizer():
 
     def __init__(self, **kwargs):
 
+        # unpack many parameters, all the dials...
         keys = kwargs.keys()
 
         if "grad_tol" in keys:
@@ -60,6 +62,20 @@ class QuasiNewtonOptimizer():
         else:
             self.default_step_size = 1
 
+        if "armijo" in keys:
+            self.armijo = kwargs["armijo"]
+        else:
+            self.armijo = 0.5
+        if "wolfe" in keys:
+            self.wolfe = kwargs["wolfe"]
+        else:
+            self.wolfe = 0.3
+
+        if "line_search_max_iter" in keys:
+            self.max_iter_ls = kwargs["line_search_max_iter"]
+        else:
+            self.max_iter_ls = 15
+
         # will be callable functions
         self.objective = None
         self.gradient = None
@@ -70,6 +86,10 @@ class QuasiNewtonOptimizer():
         self.current_gradient = 0
         self.current_hessian = 0
 
+        self.current_step_size = self.default_step_size
+        self.current_position_update = 0
+        self.current_descent_direction = None
+
         # other book keeping
         self.minimizer_list = None
         self.success = False
@@ -79,6 +99,15 @@ class QuasiNewtonOptimizer():
 
     def do_gradient_update(self):
         self.current_gradient = self.gradient(self.get_minimizer())
+
+    def do_line_search(self):
+        step_size = ls.execute_line_search(
+            self.objective, self.gradient, self.get_minimizer(),
+            self.current_descent_direction, self.default_step_size,
+            self.armijo, self.wolfe,
+            method=self.line_search, max_iter=self.max_iter_ls
+        )
+        return step_size
 
     def solve(self, hessian, gradient):
         return -gradient
@@ -102,17 +131,19 @@ class QuasiNewtonOptimizer():
             self.do_gradient_update()
 
         # apply linear solver on hessian and gradient
-        decent_direction = self.solve(self.current_hessian,
+        self.current_descent_direction = self.solve(self.current_hessian,
                                         self.current_gradient)
 
         # determine step size
         if self.line_search is not None:
-            step_size = self.line_search()
+            self.current_step_size = self.do_line_search()
         else:
-            step_size = self.default_step_size
+            self.current_step_size = self.default_step_size
 
         # perform update
-        new_point = self.get_minimizer() + step_size * decent_direction
+        self.current_position_update = self.current_step_size * \
+                        self.current_descent_direction
+        new_point = self.get_minimizer() + self.current_position_update
         self.push_minimizer(new_point)
 
 
@@ -185,10 +216,10 @@ class NewtonOptimizer(QuasiNewtonOptimizer):
 
         try:
             (c, lower) = cho_factor(hessian)
-            decent_direction = -cho_solve((c, lower), gradient)
+            des_direction = -cho_solve((c, lower), gradient)
         except np.linalg.LinAlgError:
             # choleksy factorization failed, not SPD
             # has to be symmetric
-            decent_direction = -solve(hessian, gradient, assume_a="sym")
+            des_direction = -solve(hessian, gradient, assume_a="sym")
 
-        return decent_direction
+        return des_direction

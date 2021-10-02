@@ -138,7 +138,7 @@ def __pder_fourth_order__(f, x, step, index):
 
     return df4dxi
 
-@numba.jit(nopython=True)
+#@numba.jit(nopython=True)
 def fdjacobian(f, x, step=1e-6):
     """
     Finite difference approximation for the jacobian
@@ -165,9 +165,9 @@ def fdjacobian(f, x, step=1e-6):
     # iterate along input dim
     for input_index in range(n):
         x_up = np.copy(x)
-        x_up[index] += step
+        x_up[input_index] += step
         x_lo = np.copy(x)
-        x_lo[index] -= step
+        x_lo[input_index] -= step
 
         # assign column wise
         jac[:, input_index] = (f(x_up) - f(x_lo)) / (2 * step)

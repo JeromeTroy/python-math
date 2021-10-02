@@ -54,21 +54,11 @@ class GaussNewton(AbstractNewtonLikeOptimizer):
 
     def solve(self, jacbian, objective):
 
-        if self.objective_size > self.input_size:
-            # J is m x n with m > n, over constrained
-            Q, R = qr(jacbian, mode="economic")
-            tmp = Q.T @ objective
-            des_direction = solve(R, tmp)
+        # J is m x n with m > n, over constrained
+        Q, R = qr(jacbian, mode="economic")
+        tmp = Q.T @ objective
+        des_direction = solve(R, tmp)
 
-        elif self.objective_size == self.input_size:
-            # square, standard solve
-            des_direction = solve(jacbian, objective)
-
-        else:
-            # m < n, under constrained
-            u, s, v = svd(jacbian, full_matrices=False)
-            tmp = (u.T.conj() @ objective) / s
-            des_direction = v.T.conj() @ tmp
 
         return des_direction
 

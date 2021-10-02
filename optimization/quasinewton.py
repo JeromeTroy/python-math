@@ -52,6 +52,11 @@ class QuasiNewtonOptimizer(AbstractNewtonLikeOptimizer):
         else:
             self.fd_hess_step = 1e-6
 
+        if "fd_hess_trust" in keys:
+            self.trust_ratio = kwargs["fd_hess_trust"]
+        else:
+            self.trust_ratio = 0.25
+
         # will be callable functions
         self.gradient = None
         self.hessian = None
@@ -62,8 +67,50 @@ class QuasiNewtonOptimizer(AbstractNewtonLikeOptimizer):
 
         self.current_position_update = 0
 
+    def determine_if_should_update_hessian(self, new_objective):
+        """
+        Determine if the trust region for the previous hessian FD
+        computation is outdated
+
+        Input:
+            new_objective : float
+                new objective value, this is the only value which
+                is not stored in the object
+
+        Output:
+            set's the value of self.update_hessian
+        """
+
+        if self.update_hessian_reason == "untrusted":
+            true_drop = new_objective - self.current_objective
+            # expected from quadratic approximation
+            expected_drop = np.dot(
+                self.current_gradient, self.current_position_update
+            ) + 0.5 * np.dot(
+                self.current_position_update,
+                self.current_hessian @ self.current_position_update
+            )
+            ratio = expected_drop / true_drop
+
+            self.update_hessian = (ratio < self.trust_ratio)
+        elif self.update_hessian_reason is None:
+            # do nothing, hessian is already set to update
+            pass
+        else:
+            raise NotImplementedError("No other methods of hessian updating are implemented")
+
+        # final check
+        if np.linalg.norm(self.current_position_update) < \
+            self.gradient_tolerance and self.update_hessian_reason is not None:
+            self.update_hessian = True
+
+
+
     def do_hessian_update(self):
         self.current_hessian = self.hessian(self.get_minimizer())
+        if self.update_hessian_reason is not None:
+            # we reset the hessian, so we are probably good for a bit
+            self.update_hessian = False
 
     def do_gradient_update(self):
         self.current_gradient = self.gradient(self.get_minimizer())
@@ -112,8 +159,6 @@ class QuasiNewtonOptimizer(AbstractNewtonLikeOptimizer):
                         self.current_descent_direction
         new_point = self.get_minimizer() + self.current_position_update
 
-        print("new", self.objective(new_point))
-        print("prev", self.current_objective)
         if self.objective(new_point) >= self.current_objective:
             # we did not descend
             self.current_descent_direction *= -1
@@ -129,16 +174,23 @@ class QuasiNewtonOptimizer(AbstractNewtonLikeOptimizer):
             new_point = self.get_minimizer() + self.current_position_update
 
         self.push_minimizer(new_point)
-        self.current_objective = self.objective(self.get_minimizer())
+        new_objective = self.objective(self.get_minimizer())
+        self.determine_if_should_update_hessian(new_objective)
+        self.current_objective = new_objective
+
 
     def set_gradient(self, gradient):
         if gradient is not None:
             self.gradient = gradient
 
         else:
+            # newton's method is gradient based, so we should always update
+            # the gradient
             self.gradient = lambda x: fdjac.fdgrad(
                 self.objective, x, step=self.fd_grad_step
             )
+
+
 
     def set_hessian(self, hessian):
         if hessian is not None:
@@ -147,6 +199,10 @@ class QuasiNewtonOptimizer(AbstractNewtonLikeOptimizer):
             self.hessian = lambda x: fdjac.fdhess(
                 self.objective, x, step=self.fd_hess_step
             )
+            # since we are using a finite difference approx,
+            # we want to avoid recomputing, since it's expensive
+            self.update_hessian_reason = "untrusted"
+
 
     def minimize(self, objective, x0, gradient=None, hessian=None):
         self.objective = objective
@@ -196,5 +252,6 @@ class NewtonOptimizer(QuasiNewtonOptimizer):
             # choleksy factorization failed, not SPD
             # has to be symmetric
             des_direction = -solve(hessian, gradient, assume_a="sym")
+
 
         return des_direction

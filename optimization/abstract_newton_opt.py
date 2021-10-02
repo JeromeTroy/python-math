@@ -38,6 +38,12 @@ class AbstractNewtonLikeOptimizer():
         else:
             self.max_iter_ls = 15
 
+        if "fd_trust" in keys:
+            self.trust_ratio = kwargs["fd_trust"]
+        else:
+            self.trust_ratio = 0.25
+
+
         # variable allocation
         self.objective = None
 

@@ -40,6 +40,41 @@ class GaussNewton(AbstractNewtonLikeOptimizer):
     def do_jacobian_update(self):
         self.current_jacobian = self.jacobian(self.get_minimizer())
 
+    def determine_if_should_update_jacobian(self, new_square_objective):
+        """
+        Determine if the jacobian is outdated and needs to be updated
+
+        Input:
+            new_square_objective : float
+                value of || f(x_{k+1}) ||^2
+                this is the only value not accessable from self
+        Output:
+            sets the value of self.update_jacobian
+        """
+
+        if self.update_jacobian_reason == "untrusted":
+            curr_square_objective = np.linalg.norm(self.current_objective)**2
+            true_drop = new_square_objective - curr_square_objective
+            expected_drop = np.linalg.norm(
+                self.current_objective +
+                self.current_jacobian @ self.current_position_update
+            )**2 - curr_square_objective
+
+            ratio = expected_drop / true_drop
+
+            self.update_jacobian = (ratio < self.trust_ratio)
+
+        elif self.update_jacobian_reason is None:
+            # do nothing
+            pass
+        else:
+            raise NotImplementedError("No other methods of jacobian updating are implemented")
+
+        # final check
+        if np.linalg.norm(self.current_position_update) < \
+            self.gradient_tolerance and self.update_gradient_reason is not None:
+            self.update_jacobian = True
+
     def square_objective(self, x):
         return np.linalg.norm(self.objective(x)) ** 2
 
@@ -87,6 +122,8 @@ class GaussNewton(AbstractNewtonLikeOptimizer):
         self.current_position_update = self.current_step_size * \
                         self.current_descent_direction
         new_point = self.get_minimizer() + self.current_position_update
+        new_square_objective = self.square_objective(new_point)
+        self.determine_if_should_update_jacobian(new_square_objective)
 
         self.push_minimizer(new_point)
         self.current_objective = self.objective(self.get_minimizer())
@@ -99,6 +136,9 @@ class GaussNewton(AbstractNewtonLikeOptimizer):
             self.jac = lambda x: fdjac.fdjacobian(
                 self.objective, x, step=self.fd_jac_step
             )
+            # since the fd computation for the jacobian is expensive,
+            # we want to avoid recomputing if we don't have to
+            self.jacobian_update_reason = "untrusted"
 
     def set_initial_guess(self, x0):
         super().set_initial_guess(x0)

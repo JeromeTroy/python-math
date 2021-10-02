@@ -52,11 +52,6 @@ class QuasiNewtonOptimizer(AbstractNewtonLikeOptimizer):
         else:
             self.fd_hess_step = 1e-6
 
-        if "fd_hess_trust" in keys:
-            self.trust_ratio = kwargs["fd_hess_trust"]
-        else:
-            self.trust_ratio = 0.25
-
         # will be callable functions
         self.gradient = None
         self.hessian = None
